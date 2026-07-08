@@ -1,0 +1,27 @@
+# Build output
+/bin/
+*.o
+*.so
+*.dylib
+*.exe
+
+# Native build artifacts
+native/macos/*.dylib
+native/linux/*.so
+native/**/build/
+
+# Local claude copy the adapter re-signs for injection (never commit)
+/.rcc-claude-copy/
+
+# Runtime sockets / logs
+*.sock
+*.log
+
+# Agent scratch state
+TASKS.md
+
+# OS
+.DS_Store
+
+# Go
+/vendor/
