@@ -87,12 +87,18 @@ func main() {
 		logger.Printf("re-signed claude copy at %s", claudeToRun)
 	}
 
+	// The spawn proxy always connects to the adapter's local exec-bridge socket,
+	// which forwards to the executor over the shared transport (unix or libp2p).
+	// This is what lets subprocesses route cross-machine without the proxy
+	// speaking libp2p itself.
+	bridgeSock := *adapterSock + ".exec"
+
 	cfg := &adapter.LaunchConfig{
 		ClaudePath:     claudeToRun,
 		Args:           flag.Args(),
 		WorkDir:        *workDir,
 		AdapterSock:    *adapterSock,
-		ExecutorSock:   *executorSock,
+		ExecutorSock:   bridgeSock,
 		SpawnProxyPath: *spawnProxy,
 		RemotePrefixes: route.RemotePrefixes(),
 		SpawnSentinel:  *sentinel,
@@ -139,6 +145,21 @@ func main() {
 	}
 	defer ln.Close()
 	ad := adapter.New(ln, dialer, route, logger)
+
+	// Start the exec bridge: proxy connections on bridgeSock forward to the
+	// executor over the same transport.
+	bridgeLn, err := transport.ListenUnix(bridgeSock)
+	if err != nil {
+		log.Fatalf("remote-cc-adapter: listen exec bridge %s: %v", bridgeSock, err)
+	}
+	defer bridgeLn.Close()
+	bridge := adapter.NewExecBridge(bridgeLn, dialer, logger)
+	go func() {
+		if err := bridge.Serve(); err != nil {
+			logger.Printf("exec bridge stopped: %v", err)
+		}
+	}()
+
 	go func() {
 		if err := ad.Serve(); err != nil {
 			logger.Printf("io-rpc server stopped: %v", err)
