@@ -142,9 +142,10 @@ adapter at its peer address. The link is Noise-secured and identified by PeerID
   -- -p "read the files here"
 ```
 
-Filesystem IO-RPC flows over libp2p today. Routing subprocesses (`Bash`, the
-ripgrep engine) across machines additionally needs the exec path bridged over
-libp2p — see [Status & roadmap](#status--roadmap).
+Both filesystem IO-RPC and subprocesses (`Bash`, the ripgrep engine) flow over
+libp2p: the spawn proxy connects to a local exec-bridge socket the adapter
+serves, and the adapter splices each exec stream to the executor over the shared
+libp2p connection. The proxy never speaks libp2p itself.
 
 ## Routing
 
@@ -198,6 +199,10 @@ locally — the adapter never routes a user's global config to the sandbox.
   while local paths stay on the brain. `rcc-executor -libp2p` prints its PeerID +
   multiaddrs; `remote-cc-adapter --peer <multiaddr>` dials it. DCUtR
   hole-punching and circuit-relay fallback are enabled in the host config.
+- **Subprocesses over go-libp2p** (`internal/adapter`, tested): the adapter's
+  exec bridge splices the spawn proxy's local unix connection to a libp2p stream,
+  so a command runs on a libp2p-remote executor end-to-end. The bridge is also
+  in-path co-located and does not disturb the real-claude Bash e2e.
 
 **Subprocess routing (macOS)** decides remote-vs-local per spawn, highest
 precedence first: rg-mode self-invocation under a remote cwd → local-binary
@@ -209,11 +214,6 @@ children run with the injection environment stripped (no re-injection), and with
 
 **Next milestones:**
 
-- **Bridge the subprocess path over libp2p.** fs-RPC crosses machines, but the
-  spawn proxy still dials the executor over a local unix socket
-  (`RCC_EXECUTOR_SOCK`). For cross-machine `Bash`/ripgrep the adapter needs to
-  serve a local exec socket and splice each exec stream to the executor over the
-  shared libp2p connection (design doc §3.3).
 - **NAT-traversal field testing.** Hole-punching + relay options are enabled but
   only loopback-tested; real cross-NAT verification needs two hosts and a relay.
 - **Natural routing of bare relative fs opens.** Files opened by absolute path
