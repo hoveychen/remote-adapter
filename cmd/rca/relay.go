@@ -28,6 +28,7 @@ import (
 
 	"github.com/hoveychen/remote-cc-adapter/internal/transport"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 )
 
 func cmdRelay(args []string) int {
@@ -46,16 +47,26 @@ func cmdRelay(args []string) int {
 	}
 
 	h, err := transport.NewLibp2pHost(transport.HostConfig{
-		ListenAddrs:        splitCSV(*listen),
-		PrivKey:            priv,
-		EnableRelayService: true,
-		AnnounceAddrs:      splitCSV(*announce),
+		ListenAddrs:   splitCSV(*listen),
+		PrivKey:       priv,
+		AnnounceAddrs: splitCSV(*announce),
 	})
 	if err != nil {
 		logger.Printf("libp2p host: %v", err)
 		return 1
 	}
 	defer h.Close()
+
+	// Mount the circuit-relay v2 hop handler directly. libp2p.EnableRelayService
+	// only starts the service when the host believes it is publicly reachable;
+	// behind an HTTPS proxy that heuristic fails, so we start the relay
+	// unconditionally here.
+	r, err := relay.New(h)
+	if err != nil {
+		logger.Printf("relay service: %v", err)
+		return 1
+	}
+	defer r.Close()
 
 	relayID := h.ID().String()
 	logger.Printf("relay peer id: %s", relayID)

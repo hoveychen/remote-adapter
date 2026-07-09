@@ -29,12 +29,12 @@ type HostConfig struct {
 	// (the PeerID is that key's hash — trust is pinned by exchanging PeerIDs).
 	PrivKey crypto.PrivKey
 	// EnableHolePunching turns on DCUtR direct-connection upgrade for NAT
-	// traversal; StaticRelays are circuit-relay v2 multiaddrs used as fallback.
+	// traversal (both the NAT'd serve and the local dialer set it).
 	EnableHolePunching bool
-	StaticRelays       []string
-	// EnableRelayService turns this host into a circuit-relay v2 relay for
-	// other peers (used by `rca relay`). Ordinary serve/run hosts leave it off.
-	EnableRelayService bool
+	// ForceReachabilityPrivate marks the host as behind NAT so it acts as the
+	// DCUtR initiator; set it on a serve that reserves on a relay. Explicit
+	// reservations are made with ReserveRelays, not AutoRelay.
+	ForceReachabilityPrivate bool
 	// AnnounceAddrs, if set, are extra multiaddrs appended to what the host
 	// advertises (e.g. the public "/dns4/host/tcp/443/tls/ws" a relay is
 	// reachable at behind an HTTPS proxy that the host itself cannot observe).
@@ -59,11 +59,8 @@ func NewLibp2pHost(cfg HostConfig) (host.Host, error) {
 	if cfg.EnableHolePunching {
 		opts = append(opts, libp2p.EnableHolePunching())
 	}
-	if relays := parseAddrInfos(cfg.StaticRelays); len(relays) > 0 {
-		opts = append(opts, libp2p.EnableAutoRelayWithStaticRelays(relays))
-	}
-	if cfg.EnableRelayService {
-		opts = append(opts, libp2p.EnableRelayService())
+	if cfg.ForceReachabilityPrivate {
+		opts = append(opts, libp2p.ForceReachabilityPrivate())
 	}
 	if announce := parseMultiaddrs(cfg.AnnounceAddrs); len(announce) > 0 {
 		opts = append(opts, libp2p.AddrsFactory(func(addrs []multiaddr.Multiaddr) []multiaddr.Multiaddr {
