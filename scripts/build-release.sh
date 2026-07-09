@@ -24,11 +24,14 @@ EMBED="$REPO/cmd/rca/embedded"
 LDFLAGS="-s -w -X main.version=$VERSION"
 mkdir -p "$DIST"
 
+# Archive names carry no version (rca_darwin_arm64.tar.gz) so install
+# one-liners can use GitHub's releases/latest/download/ URLs; the version is
+# stamped inside the binary (`rca version`) and on the release tag.
 build_go() { # $1=goos $2=goarch
   local out="$DIST/rca"
   rm -f "$out"
   CGO_ENABLED=0 GOOS="$1" GOARCH="$2" go build -trimpath -ldflags "$LDFLAGS" -o "$out" ./cmd/rca
-  local tarball="$DIST/rca_${VERSION}_$1_$2.tar.gz"
+  local tarball="$DIST/rca_$1_$2.tar.gz"
   tar -C "$DIST" -czf "$tarball" rca
   rm -f "$out"
   echo "built $(basename "$tarball")"
@@ -43,7 +46,7 @@ Darwin)
   cp native/macos/rcc_interpose.dylib "$EMBED/"
   build_go darwin arm64
   build_go darwin amd64
-  (cd "$DIST" && shasum -a 256 rca_"$VERSION"_darwin_*.tar.gz > checksums-darwin.txt)
+  (cd "$DIST" && shasum -a 256 rca_darwin_*.tar.gz > checksums-darwin.txt)
   ;;
 Linux)
   # Static supervisor per arch so the artifact runs on any glibc/musl distro.
@@ -56,7 +59,7 @@ Linux)
   make -C native/linux CC=aarch64-linux-gnu-gcc CFLAGS="-O2 -Wall -Wextra -static" >/dev/null
   cp native/linux/rcc_seccomp "$EMBED/"
   build_go linux arm64
-  (cd "$DIST" && sha256sum rca_"$VERSION"_linux_*.tar.gz > checksums-linux.txt)
+  (cd "$DIST" && sha256sum rca_linux_*.tar.gz > checksums-linux.txt)
   ;;
 *)
   echo "unsupported host $(uname -s)" >&2
