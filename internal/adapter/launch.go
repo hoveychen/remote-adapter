@@ -16,7 +16,7 @@ import (
 const (
 	EnvAdapterSock   = "RCC_ADAPTER_SOCK"    // fs IO-RPC socket the interceptor dials
 	EnvExecutorSock  = "RCC_EXECUTOR_SOCK"   // executor socket the spawn proxy dials
-	EnvSpawnProxy    = "RCC_SPAWN_PROXY"     // path to the rcc-spawn-proxy binary
+	EnvSpawnProxy    = "RCC_SPAWN_PROXY"     // rca binary; routed spawns exec `rca _spawn-proxy ...`
 	EnvRemotePrefix  = "RCC_REMOTE_PREFIXES" // ':'-joined remote-routed path prefixes
 	EnvSpawnSentinel = "RCC_SPAWN_SENTINEL"  // marker that forces a subprocess remote
 	EnvClaudePath    = "RCC_CLAUDE_PATH"     // claude binary path; kept local when re-spawned

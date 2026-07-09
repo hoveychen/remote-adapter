@@ -267,6 +267,32 @@ func cmdRun(args []string) int {
 		}
 	}
 
+	// Default the native interceptor to the embedded artifact (put there by
+	// `make native`), extracted to the user cache dir.
+	if !o.serveFSOnly {
+		name := nativeArtifactName(runtime.GOOS)
+		switch {
+		case runtime.GOOS == "darwin" && o.dylib == "":
+			if o.dylib, err = extractEmbeddedNative(name); err != nil {
+				logger.Print(err)
+				return 1
+			}
+			if o.dylib == "" {
+				logger.Printf("no embedded interceptor in this build — build rca with `make`, or pass --dylib")
+				return 1
+			}
+		case runtime.GOOS == "linux" && o.supervisor == "":
+			if o.supervisor, err = extractEmbeddedNative(name); err != nil {
+				logger.Print(err)
+				return 1
+			}
+			if o.supervisor == "" {
+				logger.Printf("no embedded interceptor in this build — build rca with `make`, or pass --supervisor")
+				return 1
+			}
+		}
+	}
+
 	// The spawn proxy always connects to the adapter's local exec-bridge socket,
 	// which forwards to the executor over the shared transport (unix or libp2p).
 	// This is what lets subprocesses route cross-machine without the proxy
