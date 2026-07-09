@@ -45,6 +45,11 @@ func (e *Executor) serveExec(stream io.ReadWriteCloser) {
 	cmd := exec.Command(binPath)
 	cmd.Args = req.Argv
 	cmd.Dir = req.Cwd
+	// Run the child in its own process group so a forwarded signal (KillBash)
+	// reaches the whole tree. Otherwise killing e.g. /bin/sh orphans its children
+	// (a `sleep`), which keep the stdout pipe open — the pumps never see EOF and
+	// the exit frame is never sent.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	base := req.Env
 	if len(base) == 0 {
 		base = os.Environ()
@@ -94,7 +99,12 @@ func (e *Executor) serveExec(stream io.ReadWriteCloser) {
 				return
 			}
 			if f.Tag == execproto.TagSignal && cmd.Process != nil {
-				_ = cmd.Process.Signal(syscall.Signal(f.Signum()))
+				// Signal the whole process group (negative pid) so children die
+				// too; fall back to the leader if the group send fails.
+				sig := syscall.Signal(f.Signum())
+				if err := syscall.Kill(-cmd.Process.Pid, sig); err != nil {
+					_ = cmd.Process.Signal(sig)
+				}
 			}
 		}
 	}()

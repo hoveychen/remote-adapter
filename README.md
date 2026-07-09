@@ -174,6 +174,12 @@ locally — the adapter never routes a user's global config to the sandbox.
   (`internal/adapter` integration test).
 - Executor subprocess streaming: stdout/stderr split, exit-code fidelity
   (`internal/executor` exec test).
+- Background tasks (`run_in_background`): long-running commands stream output
+  incrementally, and a forwarded signal (KillBash) terminates the whole process
+  group — a routed child runs in its own group so killing `/bin/sh` also kills
+  its `sleep`, otherwise an orphan holds the pipe open and the exit never lands
+  (`internal/executor` bgtask test). A real-claude background Bash was observed
+  running on the executor and streaming its output back over the pipe.
 - Both native interceptors compile clean (macOS dylib, Linux seccomp), verified
   on macOS and in a Linux container.
 - **Real `claude` injection, end-to-end on macOS** (`scripts/e2e-local.sh`): a
@@ -230,9 +236,6 @@ children run with the injection environment stripped (no re-injection), and with
   `openat(AT_FDCWD, "rel")` are left local because routing every relative open
   against the cwd destabilises claude's boot. Needs a safer cwd-scoped policy
   (design doc §4.3).
-
-- `run_in_background` detach-poll semantics for backgrounded `Bash` (design doc
-  §4.3).
 
 See [`docs/design.md`](docs/design.md) for the complete design and the POC
 evidence behind every claim above.
