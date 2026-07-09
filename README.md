@@ -210,14 +210,24 @@ Repository layout, verified-status details, and the roadmap live in
 [`docs/design.md`](docs/design.md); the per-component map is in the directory
 READMEs ([`native/`](native/README.md), [`cmd/rca/embedded/`](cmd/rca/embedded/README.md)).
 
+Linux run mode routes both file reads and subprocess execution. The supervisor
+(`native/linux/rcc_seccomp.c`) traps `openat` as a seccomp USER_NOTIF (file I/O,
+redirected to the rcc-fuse mount) and `execve`/`execveat` as `SECCOMP_RET_TRACE`;
+it is also the ptracer, so each `execve` stops at syscall entry with
+`PTRACE_EVENT_SECCOMP` and — for paths that route remote — its argv is rewritten
+to `rca _spawn-proxy …` so the subprocess streams to the remote executor. The
+two paths run on separate threads (blocking `waitpid` tracer on the main thread,
+blocking `NOTIF_RECV` listener on a second thread); LD_PRELOAD can't intercept
+Bun's raw `clone+execve`, which is why ptrace is required. macOS routes both via
+DYLD interposition of `posix_spawn`.
+
 Known limits: NAT traversal is enabled but not yet field-tested across real
 networks; relative-path opens (`open("rel")`) stay local by design (claude's
-tools use absolute paths). On **Linux run mode the seccomp filter traps
-`openat` only**, so routed *file reads* work but *subprocess execution is not
-routed* — commands spawned by the target run on the local (client) machine, not
-the remote. macOS routes both (DYLD interposes `posix_spawn`). Routing Linux
-subprocesses needs a different mechanism (seccomp-notify can't rewrite `execve`
-args) and is not yet implemented.
+tools use absolute paths). Linux subprocess routing rewrites plain `execve`
+only; `execveat` runs locally (Bun uses `execve`). Real-claude end-to-end
+verification of Linux subprocess routing is pending a logged-in claude on the
+Linux test host — the mechanism itself is validated in isolation and across
+hosts (file routing + the launcher→supervisor→proxy→bridge→executor chain).
 
 ## License
 
