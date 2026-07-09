@@ -249,6 +249,15 @@ func cmdRun(args []string) int {
 			return 127
 		}
 		if runtime.GOOS == "darwin" && o.resign {
+			// Apple platform binaries (e.g. /bin/sh) live in the system trust
+			// cache; macOS SIGKILLs any copy of them — re-signed or not — so
+			// they can never be intercepted. Fail with a real explanation
+			// instead of a silent exit 137. (Verified 2026-07: `cp /bin/sh
+			// /tmp/x && /tmp/x` dies with SIGKILL on Darwin 25.)
+			if isMacOSPlatformBinary(target) {
+				logger.Printf("%s is an Apple platform binary; macOS kills copies of these outside the system trust cache, so it cannot be intercepted. Target a user-installed binary instead.", target)
+				return 1
+			}
 			dest := filepath.Join(filepath.Dir(o.adapterSock), "rcc-"+filepath.Base(target)+"-copy")
 			if target, err = adapter.PrepareMacOSCopy(target, dest); err != nil {
 				logger.Printf("prepare re-signed copy: %v", err)
@@ -415,6 +424,18 @@ func cmdRun(args []string) int {
 		}
 	}()
 	return exitCode(cmd.Wait())
+}
+
+// isMacOSPlatformBinary reports whether path is an Apple platform binary
+// (codesign prints "Platform identifier=" for those). Platform binaries are
+// validated against the static trust cache, so copies of them are SIGKILLed
+// and can never carry an interpose dylib.
+func isMacOSPlatformBinary(path string) bool {
+	out, err := exec.Command("codesign", "-d", "--verbose=2", path).CombinedOutput()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(out), "Platform identifier=")
 }
 
 func defaultAdapterSock() string {

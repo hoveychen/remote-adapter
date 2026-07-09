@@ -42,6 +42,17 @@ jobs:
       - name: Sanity — dylib is a Mach-O
         run: file native/macos/rcc_interpose.dylib | grep -q 'Mach-O'
 
+  e2e-paircode:
+    name: pairing-code e2e (macOS, no claude)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Full pipeline — rca serve + --code + injected toy target
+        run: scripts/e2e-paircode.sh
+
   native-linux:
     name: Linux seccomp supervisor
     runs-on: ubuntu-latest
