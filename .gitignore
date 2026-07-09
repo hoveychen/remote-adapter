@@ -32,3 +32,6 @@ TASKS.md
 /vendor/
 dist/
 native/linux/rcc_seccomp
+
+# Stray root build artifact
+/rca
