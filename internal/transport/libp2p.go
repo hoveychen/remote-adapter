@@ -32,6 +32,13 @@ type HostConfig struct {
 	// traversal; StaticRelays are circuit-relay v2 multiaddrs used as fallback.
 	EnableHolePunching bool
 	StaticRelays       []string
+	// EnableRelayService turns this host into a circuit-relay v2 relay for
+	// other peers (used by `rca relay`). Ordinary serve/run hosts leave it off.
+	EnableRelayService bool
+	// AnnounceAddrs, if set, are extra multiaddrs appended to what the host
+	// advertises (e.g. the public "/dns4/host/tcp/443/tls/ws" a relay is
+	// reachable at behind an HTTPS proxy that the host itself cannot observe).
+	AnnounceAddrs []string
 }
 
 // NewLibp2pHost builds a libp2p host with Noise/TLS security (PeerID == public
@@ -55,7 +62,30 @@ func NewLibp2pHost(cfg HostConfig) (host.Host, error) {
 	if relays := parseAddrInfos(cfg.StaticRelays); len(relays) > 0 {
 		opts = append(opts, libp2p.EnableAutoRelayWithStaticRelays(relays))
 	}
+	if cfg.EnableRelayService {
+		opts = append(opts, libp2p.EnableRelayService())
+	}
+	if announce := parseMultiaddrs(cfg.AnnounceAddrs); len(announce) > 0 {
+		opts = append(opts, libp2p.AddrsFactory(func(addrs []multiaddr.Multiaddr) []multiaddr.Multiaddr {
+			return append(announce, addrs...)
+		}))
+	}
 	return libp2p.New(opts...)
+}
+
+// parseMultiaddrs best-effort parses plain multiaddr strings (no /p2p/ suffix
+// required), dropping any that fail to parse.
+func parseMultiaddrs(addrs []string) []multiaddr.Multiaddr {
+	var out []multiaddr.Multiaddr
+	for _, a := range addrs {
+		if a = strings.TrimSpace(a); a == "" {
+			continue
+		}
+		if ma, err := multiaddr.NewMultiaddr(a); err == nil {
+			out = append(out, ma)
+		}
+	}
+	return out
 }
 
 // parseAddrInfos best-effort parses p2p multiaddrs into peer.AddrInfo.
