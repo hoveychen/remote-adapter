@@ -1,21 +1,21 @@
-// Command rcc-spawn-proxy stands in for a subprocess that the native
-// interceptor decided to run remotely. The interceptor rewrites a
-// posix_spawn/exec of the real target into an exec of this proxy; the proxy
-// connects to the executor, forwards argv + cwd + env, streams stdout/stderr
-// back through its own inherited pipes, forwards SIGINT/SIGTERM, and exits with
-// the remote child's exit code. It is the Go port of the POC's remote_run.py
-// (design doc §4.1 point 4).
+package main
+
+// rca _spawn-proxy — stands in for a subprocess that the native interceptor
+// decided to run remotely. The interceptor rewrites a posix_spawn/exec of the
+// real target into an exec of this subcommand; it connects to the executor,
+// forwards argv + cwd + env, streams stdout/stderr back through its own
+// inherited pipes, forwards SIGINT/SIGTERM, and exits with the remote child's
+// exit code (design doc §4.1 point 4).
 //
 // Invocation (by the interceptor):
 //
-//	rcc-spawn-proxy <exec-path> <argv0> [argv1...]
+//	rca _spawn-proxy <exec-path> <argv0> [argv1...]
 //
 // <exec-path> is the binary to run on the executor; the remaining arguments are
 // the child's full argument vector including argv[0], which is preserved so
 // binaries that switch behaviour on argv[0] (claude's embedded ripgrep keys off
 // argv[0] basename "rg") work when routed. The executor socket is read from
 // RCC_EXECUTOR_SOCK.
-package main
 
 import (
 	"bufio"
@@ -31,37 +31,33 @@ import (
 	"github.com/hoveychen/remote-cc-adapter/internal/transport"
 )
 
-func main() {
-	os.Exit(run())
-}
-
-func run() int {
-	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "rcc-spawn-proxy: usage: rcc-spawn-proxy <exec-path> <argv0> [argv1...]")
+func cmdSpawnProxy(args []string) int {
+	if len(args) < 2 {
+		fmt.Fprintln(os.Stderr, "rca: usage: rca _spawn-proxy <exec-path> <argv0> [argv1...]")
 		return 127
 	}
 	sock := os.Getenv("RCC_EXECUTOR_SOCK")
 	if sock == "" {
-		fmt.Fprintln(os.Stderr, "rcc-spawn-proxy: RCC_EXECUTOR_SOCK not set")
+		fmt.Fprintln(os.Stderr, "rca _spawn-proxy: RCC_EXECUTOR_SOCK not set")
 		return 127
 	}
 
 	cwd, _ := os.Getwd()
 	stream, err := transport.NewUnixDialer(sock).Dial(context.Background())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "rcc-spawn-proxy: dial executor: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rca _spawn-proxy: dial executor: %v\n", err)
 		return 127
 	}
 	defer stream.Close()
 
 	// Identify this as an exec stream, then send the spawn request.
 	if _, err := stream.Write([]byte{executor.StreamKindExec}); err != nil {
-		fmt.Fprintf(os.Stderr, "rcc-spawn-proxy: write kind: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rca _spawn-proxy: write kind: %v\n", err)
 		return 127
 	}
-	req := &execproto.SpawnRequest{Path: os.Args[1], Argv: os.Args[2:], Cwd: cwd, Env: os.Environ()}
+	req := &execproto.SpawnRequest{Path: args[0], Argv: args[1:], Cwd: cwd, Env: os.Environ()}
 	if err := execproto.WriteSpawnRequest(stream, req); err != nil {
-		fmt.Fprintf(os.Stderr, "rcc-spawn-proxy: send request: %v\n", err)
+		fmt.Fprintf(os.Stderr, "rca _spawn-proxy: send request: %v\n", err)
 		return 127
 	}
 
@@ -84,7 +80,7 @@ func run() int {
 			if err == io.EOF {
 				return 0
 			}
-			fmt.Fprintf(os.Stderr, "rcc-spawn-proxy: read frame: %v\n", err)
+			fmt.Fprintf(os.Stderr, "rca _spawn-proxy: read frame: %v\n", err)
 			return 127
 		}
 		switch f.Tag {

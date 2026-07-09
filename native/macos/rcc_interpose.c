@@ -18,7 +18,8 @@
 // Environment (set by the adapter, see internal/adapter/launch.go):
 //   RCC_ADAPTER_SOCK    unix socket for fs IO-RPC
 //   RCC_REMOTE_PREFIXES ':'-joined path prefixes to forward
-//   RCC_SPAWN_PROXY     path to rcc-spawn-proxy
+//   RCC_SPAWN_PROXY     path to the rca binary; routed spawns become
+//                       `rca _spawn-proxy <exec-path> <argv...>`
 //   RCC_SPAWN_SENTINEL  env marker that forces a subprocess remote
 
 #include <string.h>
@@ -476,10 +477,14 @@ int my_gde64(int fd, void *buf, size_t nbytes, long *basep) {
 // Extend via RCC_LOCAL_BINS (':'-joined substrings).
 static int spawn_is_local_bin(const char *path) {
   if (!path) return 0;
-  static const char *defaults[] = {"/usr/bin/security", "rcc-spawn-proxy",
-                                    "pbcopy", "tmux", NULL};
+  static const char *defaults[] = {"/usr/bin/security", "pbcopy", "tmux", NULL};
   for (int i = 0; defaults[i]; i++)
     if (strstr(path, defaults[i])) return 1;
+  // The spawn proxy (the rca binary) is matched by its full path from the env,
+  // not by a name substring — "rca" alone would false-positive on any path
+  // containing those three letters.
+  const char *proxy = getenv("RCC_SPAWN_PROXY");
+  if (proxy && *proxy && strstr(path, proxy)) return 1;
   const char *claude = getenv("RCC_CLAUDE_PATH");
   if (claude && *claude && strstr(path, claude)) return 1;
   const char *bins = getenv("RCC_LOCAL_BINS");
@@ -516,7 +521,7 @@ static int cwd_is_remote(void) {
 //
 // The proxy rewrite preserves the ORIGINAL argv[0]: claude enters ripgrep mode
 // only when argv[0]'s basename is "rg", so the executor must exec the binary
-// with that argv[0] intact (see cmd/rcc-spawn-proxy, internal/execproto).
+// with that argv[0] intact (see cmd/rca/spawnproxy.go, internal/execproto).
 int my_posix_spawn(pid_t *pid, const char *path, const posix_spawn_file_actions_t *fa,
                    const posix_spawnattr_t *at, char *const av[], char *const ev[]) {
   const char *proxy = getenv("RCC_SPAWN_PROXY");
@@ -548,11 +553,14 @@ int my_posix_spawn(pid_t *pid, const char *path, const posix_spawn_file_actions_
      route, reason, (n > 0 && av[0]) ? av[0] : "", (n > 1 && av[1]) ? av[1] : "");
 
   if (route && proxy && *proxy) {
-    // proxy argv: [proxy, exec-path, argv0, argv1, ...] — exec-path is the real
-    // binary; the rest is the child's full argv with argv[0] preserved.
-    char **na = calloc(n + 3, sizeof(char *));
+    // proxy argv: [rca, _spawn-proxy, exec-path, argv0, argv1, ...] — exec-path
+    // is the real binary; the rest is the child's full argv with argv[0]
+    // preserved. "_spawn-proxy" selects the proxy subcommand inside the single
+    // rca binary (cmd/rca/spawnproxy.go).
+    char **na = calloc(n + 4, sizeof(char *));
     int k = 0;
     na[k++] = (char *)proxy;
+    na[k++] = "_spawn-proxy";
     na[k++] = (char *)path;
     for (int j = 0; j < n; j++) na[k++] = av[j];
     na[k] = NULL;

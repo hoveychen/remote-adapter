@@ -36,7 +36,7 @@ read them:
 |---|---|
 | `RCC_ADAPTER_SOCK` | Unix socket the interceptor dials for fs IO-RPC. |
 | `RCC_REMOTE_PREFIXES` | `:`-joined path prefixes to forward (remote-allowlist). |
-| `RCC_SPAWN_PROXY` | Path to `rcc-spawn-proxy` (macOS subprocess forwarding). |
+| `RCC_SPAWN_PROXY` | Path to the `rca` binary; routed spawns become `rca _spawn-proxy <exec-path> <argv...>` (macOS subprocess forwarding). |
 | `RCC_SPAWN_SENTINEL` | Env marker that forces a subprocess remote (macOS). |
 
 Handle lifecycle: the interceptor keeps a file's `open`/`read`/`close` sequence
