@@ -15,6 +15,7 @@ package linuxfuse
 
 import (
 	"context"
+	"os"
 	pathpkg "path"
 	"sync"
 	"syscall"
@@ -82,6 +83,9 @@ func mountOpts(name string, directMount bool) *fs.Options {
 		// here is far more useful than "fusermount exited with code 256".
 		DirectMount:       directMount,
 		DirectMountStrict: directMount,
+		// RCC_FUSE_DEBUG traces every FUSE request/response to stderr. Off by
+		// default; the trace is voluminous.
+		Debug: os.Getenv("RCC_FUSE_DEBUG") != "",
 	}}
 }
 
