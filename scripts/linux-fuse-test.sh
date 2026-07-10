@@ -12,8 +12,8 @@
 # daemon, seccomp supervisor, consumers — sees $STORE as it really is on disk.
 #
 # Pipeline: rca serve (fs IO-RPC server, backs a real 10 MiB file) <- rca _fuse
-# (FUSE mount) <- seccomp supervisor (redirects a routed openat to the FUSE
-# file) <- a raw-syscall consumer that preads a 25-byte slice from 5 MiB in.
+# (mounts that remote directory at its own absolute path) <- seccomp supervisor
+# <- raw-syscall consumers that read, enumerate, cross-check and mutate.
 set -euo pipefail
 
 command -v fusermount3 >/dev/null 2>&1 || { apt-get update -qq >/dev/null && apt-get install -y -qq fuse3 >/dev/null; }
@@ -21,7 +21,6 @@ command -v fusermount3 >/dev/null 2>&1 || { apt-get update -qq >/dev/null && apt
 WORK="$(mktemp -d)"
 REAL="$WORK/real"; mkdir -p "$REAL"   # the serve host's real project directory
 STORE="$WORK/store"; mkdir -p "$STORE" # the run host's placeholder at the routed path
-MNT="$WORK/fuse"; mkdir -p "$MNT"
 EXECSOCK="$WORK/exec.sock"   # remote executor
 ADSOCK="$WORK/ad.sock"       # brain adapter (fs-RPC, raw protocol)
 BIG="$STORE/bigfile.dat"     # the path consumers ask for; content lives in $REAL
@@ -52,10 +51,15 @@ echo "== start adapter (brain, routes STORE -> executor, serves fs-RPC) =="
 AD_PID=$!
 for _ in $(seq 1 50); do [[ -S "$ADSOCK" ]] && break; sleep 0.1; done
 
-echo "== start rca _fuse (connects to adapter, raw protocol) =="
-"$WORK/rca" _fuse -mount "$MNT" -adapter-sock "$ADSOCK" >"$WORK/fuse.log" 2>&1 &
+echo "== start rca _fuse: mount the remote directory AT its own absolute path =="
+# The mount point and the remote root are the same absolute path, so openat,
+# stat, statx, getdents64 and getcwd all resolve through one filesystem. The old
+# shape — a flat hex(path) namespace that only openat knew how to reach — is what
+# gave the target a split view of its own cwd.
+"$WORK/rca" _fuse -mount "$STORE" -root "$STORE" -adapter-sock "$ADSOCK" >"$WORK/fuse.log" 2>&1 &
 FUSE_PID=$!
-for _ in $(seq 1 50); do mountpoint -q "$MNT" 2>/dev/null && break; sleep 0.1; done
+for _ in $(seq 1 50); do mountpoint -q "$STORE" 2>/dev/null && break; sleep 0.1; done
+mountpoint -q "$STORE" || { echo "FATAL: routed mount never came up"; cat "$WORK/fuse.log"; exit 1; }
 
 echo "== raw consumer: openat routed path, pread 25 bytes @ 5MiB =="
 cat > "$WORK/consumer.c" <<'EOF'
@@ -77,7 +81,7 @@ int main(int argc, char **argv) {
 EOF
 cc -O2 -o "$WORK/consumer" "$WORK/consumer.c"
 
-OUT="$(RCC_FUSE_MNT="$MNT" RCC_REMOTE_PREFIXES="$STORE" "$WORK/sup" "$WORK/consumer" "$BIG" 2>"$WORK/sup.log" || true)"
+OUT="$(RCC_REMOTE_PREFIXES="$STORE" "$WORK/sup" "$WORK/consumer" "$BIG" 2>"$WORK/sup.log" || true)"
 echo "consumer said: $OUT"
 
 echo "== raw consumer: openat routed DIRECTORY, getdents64 the entries =="
@@ -114,7 +118,7 @@ int main(int argc, char **argv) {
 EOF
 cc -O2 -o "$WORK/dirconsumer" "$WORK/dirconsumer.c"
 
-DIROUT="$(RCC_FUSE_MNT="$MNT" RCC_REMOTE_PREFIXES="$STORE" "$WORK/sup" "$WORK/dirconsumer" "$DIR" 2>&1 || true)"
+DIROUT="$(RCC_REMOTE_PREFIXES="$STORE" "$WORK/sup" "$WORK/dirconsumer" "$DIR" 2>&1 || true)"
 echo "dirconsumer said: $DIROUT"
 
 echo "== raw consumer: openat and stat must agree on the same routed path =="
@@ -144,6 +148,9 @@ int main(int argc, char **argv) {
   struct stat fb;
   if (fstat(fd, &fb) < 0) { perror("fstat"); return 1; }
   printf("SIZE_FSTAT:%lld SIZE_STAT:%lld\n", (long long)fb.st_size, (long long)sb.st_size);
+  // st_dev pins it down: not merely "both are FUSE", but the very same mount.
+  printf("DEV_FSTAT:%llu DEV_STAT:%llu\n",
+         (unsigned long long)fb.st_dev, (unsigned long long)sb.st_dev);
   struct statfs ffs, pfs;
   if (fstatfs(fd, &ffs) < 0 || statfs(p, &pfs) < 0) { perror("statfs"); return 1; }
   printf("FSTYPE_FD:0x%lx FSTYPE_PATH:0x%lx\n",
@@ -153,7 +160,7 @@ int main(int argc, char **argv) {
 EOF
 cc -O2 -o "$WORK/splitview" "$WORK/splitview.c"
 
-SPLITOUT="$(RCC_FUSE_MNT="$MNT" RCC_REMOTE_PREFIXES="$STORE" "$WORK/sup" "$WORK/splitview" "$BIG" 2>&1 || true)"
+SPLITOUT="$(RCC_REMOTE_PREFIXES="$STORE" "$WORK/sup" "$WORK/splitview" "$BIG" 2>&1 || true)"
 echo "splitview said: $SPLITOUT"
 
 echo "== raw consumer: a routed cwd must enumerate and resolve relative names =="
@@ -202,10 +209,29 @@ int main(int argc, char **argv) {
 EOF
 cc -O2 -o "$WORK/cwdconsumer" "$WORK/cwdconsumer.c"
 
-CWDOUT="$(cd "$STORE" && RCC_FUSE_MNT="$MNT" RCC_REMOTE_PREFIXES="$STORE" "$WORK/sup" "$WORK/cwdconsumer" 2>&1 || true)"
+CWDOUT="$(cd "$STORE" && RCC_REMOTE_PREFIXES="$STORE" "$WORK/sup" "$WORK/cwdconsumer" 2>&1 || true)"
 echo "cwdconsumer said: $CWDOUT"
 
-kill "$FUSE_PID" 2>/dev/null || true; fusermount3 -u "$MNT" 2>/dev/null || true
+echo "== mutate the routed directory: create, write, truncate, mkdir, rename, remove =="
+# Exercises the FUSE write path (Create/Write/Setattr/Mkdir/Rename/Unlink/Rmdir)
+# with ordinary shell tools. Everything must land on the *serve* side, i.e. in
+# $REAL, which only the executor's mount namespace maps onto $STORE.
+WROUT=""
+write_probe() { WROUT="$WROUT $1"; }
+( echo "hello remote" > "$STORE/newfile.txt" ) 2>>"$WORK/write.err" && write_probe "create=ok" || write_probe "create=FAIL"
+[[ "$(cat "$REAL/newfile.txt" 2>/dev/null)" == "hello remote" ]] && write_probe "landed=ok" || write_probe "landed=FAIL"
+( printf 'xx' > "$STORE/newfile.txt" ) 2>>"$WORK/write.err" && write_probe "trunc=ok" || write_probe "trunc=FAIL"
+[[ "$(cat "$REAL/newfile.txt" 2>/dev/null)" == "xx" ]] && write_probe "truncbody=ok" || write_probe "truncbody=FAIL"
+mkdir "$STORE/newdir" 2>>"$WORK/write.err" && write_probe "mkdir=ok" || write_probe "mkdir=FAIL"
+mv "$STORE/newfile.txt" "$STORE/newdir/moved.txt" 2>>"$WORK/write.err" && write_probe "rename=ok" || write_probe "rename=FAIL"
+[[ -f "$REAL/newdir/moved.txt" ]] && write_probe "renamelanded=ok" || write_probe "renamelanded=FAIL"
+rm "$STORE/newdir/moved.txt" 2>>"$WORK/write.err" && write_probe "unlink=ok" || write_probe "unlink=FAIL"
+rmdir "$STORE/newdir" 2>>"$WORK/write.err" && write_probe "rmdir=ok" || write_probe "rmdir=FAIL"
+[[ ! -e "$REAL/newdir" ]] && write_probe "removed=ok" || write_probe "removed=FAIL"
+echo "write probes:$WROUT"
+
+fusermount3 -u "$STORE" 2>/dev/null || umount "$STORE" 2>/dev/null || true
+kill "$FUSE_PID" 2>/dev/null || true
 kill "$AD_PID" 2>/dev/null || true
 kill "$EXEC_PID" 2>/dev/null || true
 
@@ -213,7 +239,7 @@ echo
 echo "===== VERDICT ====="
 PASS=1
 if echo "$OUT" | grep -q "$MARK"; then
-  echo "[PASS] consumer read the correct slice via the FUSE-backed injected fd"
+  echo "[PASS] consumer read the correct slice through the routed mount"
 else
   echo "[FAIL] consumer did not read the expected marker"; PASS=0
 fi
@@ -245,9 +271,12 @@ SV_FD_FS="$(echo "$SPLITOUT" | sed -n 's/.*FSTYPE_FD:\([^ ]*\).*/\1/p')"
 SV_PATH_FS="$(echo "$SPLITOUT" | sed -n 's/.*FSTYPE_PATH:\(.*\)/\1/p')"
 SV_FSTAT="$(echo "$SPLITOUT" | sed -n 's/SIZE_FSTAT:\([0-9]*\).*/\1/p')"
 SV_STAT="$(echo "$SPLITOUT" | sed -n 's/.*SIZE_STAT:\([0-9]*\).*/\1/p')"
+SV_FDEV="$(echo "$SPLITOUT" | sed -n 's/DEV_FSTAT:\([0-9]*\).*/\1/p')"
+SV_PDEV="$(echo "$SPLITOUT" | sed -n 's/.*DEV_STAT:\([0-9]*\).*/\1/p')"
 if echo "$SPLITOUT" | grep -q '^OPENAT:ok' && echo "$SPLITOUT" | grep -q '^STAT:ok' &&
-   [[ -n "$SV_FSTAT" && "$SV_FSTAT" == "$SV_STAT" && -n "$SV_FD_FS" && "$SV_FD_FS" == "$SV_PATH_FS" ]]; then
-  echo "[PASS] openat and stat agree on the routed path (one filesystem, one size)"
+   [[ -n "$SV_FSTAT" && "$SV_FSTAT" == "$SV_STAT" && -n "$SV_FD_FS" && "$SV_FD_FS" == "$SV_PATH_FS" &&
+      -n "$SV_FDEV" && "$SV_FDEV" == "$SV_PDEV" ]]; then
+  echo "[PASS] openat and stat agree on the routed path (same mount, same size)"
 else
   echo "[FAIL] split view on the routed path: $(echo "$SPLITOUT" | tr '\n' ' ')"; PASS=0
 fi
@@ -258,6 +287,13 @@ if echo "$CWDOUT" | grep -q "^CWD:$STORE$" && echo "$CWDOUT" | grep -q "^CWDENT:
   echo "[PASS] routed cwd enumerates and resolves relative names"
 else
   echo "[FAIL] routed cwd is not the remote directory: $(echo "$CWDOUT" | tr '\n' ' ')"; PASS=0
+fi
+# Writes must reach the serve host, not a local shadow copy.
+if [[ "$WROUT" != *FAIL* ]]; then
+  echo "[PASS] routed directory is writable end to end:$WROUT"
+else
+  echo "[FAIL] routed write path:$WROUT"; PASS=0
+  [[ -s "$WORK/write.err" ]] && sed 's/^/       /' "$WORK/write.err"
 fi
 echo "==================="
 rm -rf "$WORK"
