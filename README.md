@@ -1,10 +1,10 @@
-# remote-cc-adapter (`rca`)
+# remote-adapter (`rca`)
 
-Run a CLI — typically [Claude Code](https://claude.com/claude-code) — locally,
-but make its **tool calls execute on another machine**: file reads/writes and
-subprocesses land in a remote sandbox, while the process itself (and for
-claude, the reasoning loop, tool schemas, transcript) stays byte-for-byte
-native on your machine. The model cannot perceive the split: there are no
+Run an agent CLI — [Claude Code](https://claude.com/claude-code),
+[codex](https://github.com/openai/codex), or any other — locally, but make its
+**tool calls execute on another machine**: file reads/writes and subprocesses
+land in a remote sandbox, while the process itself (and, for a reasoning agent,
+its loop, tool schemas, transcript) stays byte-for-byte native on your machine. The model cannot perceive the split: there are no
 `mcp__` tool prefixes and no custom schemas, because the tool *implementations*
 are untouched. Only the syscalls beneath them (`open`/`read`/`posix_spawn`/…)
 are redirected.
@@ -28,18 +28,18 @@ and every `Bash` command it runs happens on the remote.
 ## Install
 
 Grab the single binary from
-[Releases](https://github.com/hoveychen/remote-cc-adapter/releases) — one
+[Releases](https://github.com/hoveychen/remote-adapter/releases) — one
 archive per platform, interceptor included:
 
 ```sh
 # macOS (Apple silicon)
-curl -fsSL https://github.com/hoveychen/remote-cc-adapter/releases/latest/download/rca_darwin_arm64.tar.gz | tar xz
+curl -fsSL https://github.com/hoveychen/remote-adapter/releases/latest/download/rca_darwin_arm64.tar.gz | tar xz
 # macOS (Intel)
-curl -fsSL https://github.com/hoveychen/remote-cc-adapter/releases/latest/download/rca_darwin_amd64.tar.gz | tar xz
+curl -fsSL https://github.com/hoveychen/remote-adapter/releases/latest/download/rca_darwin_amd64.tar.gz | tar xz
 # Linux (x86_64)
-curl -fsSL https://github.com/hoveychen/remote-cc-adapter/releases/latest/download/rca_linux_amd64.tar.gz | tar xz
+curl -fsSL https://github.com/hoveychen/remote-adapter/releases/latest/download/rca_linux_amd64.tar.gz | tar xz
 # Linux (arm64)
-curl -fsSL https://github.com/hoveychen/remote-cc-adapter/releases/latest/download/rca_linux_arm64.tar.gz | tar xz
+curl -fsSL https://github.com/hoveychen/remote-adapter/releases/latest/download/rca_linux_arm64.tar.gz | tar xz
 
 sudo install -m 755 rca /usr/local/bin/rca   # or anywhere on your PATH
 rca version
@@ -91,14 +91,19 @@ Useful flags (they may appear anywhere on the line; everything after a literal
 | `--remote-prefix <path>` | path prefix routed remote; **default: the working directory** |
 | `--workdir <dir>` | working directory for the command (default: cwd) |
 | `--default-remote` | route *everything* remote except `--local-prefix` paths |
+| `--profile <engine>` | engine whose config home is pinned local under `--default-remote` (`claude`\|`codex`; default: auto-detect from the command name) |
 | `--resign=false` | macOS: skip running an ad-hoc re-signed copy of the target |
 | `--sock <path>` | co-located mode: dial an executor unix socket instead of libp2p |
 | `--peer <multiaddr>` | dial a raw libp2p multiaddr instead of a pairing code |
 | `--print-cmd` | print the assembled launch command + env, spawn nothing |
 
 Defaults are chosen so the common case needs zero flags: the project you `cd`
-into routes remote; claude's own config and credentials (`~/.claude`,
-`~/.claude.json`) always stay local, even under `--default-remote`.
+into routes remote; the engine's own config and credentials always stay local,
+even under `--default-remote`. Which paths those are is an **engine profile**,
+auto-detected from the command name (override with `--profile`): `claude` pins
+`~/.claude` + `~/.claude.json` (+ system managed-settings); `codex` pins
+`$CODEX_HOME`‖`~/.codex` + `/etc/codex`. The routing layer itself is
+engine-agnostic — any user-installed agent CLI works.
 
 ### Co-located testing (one host)
 
@@ -226,8 +231,9 @@ rationale, the three rejected designs, and the POC evidence are in
 ```sh
 make            # native interceptor + rca into ./bin
 make test       # go test ./...
-scripts/e2e-paircode.sh   # full pipeline e2e, no claude needed (also runs in CI)
+scripts/e2e-paircode.sh   # full pipeline e2e, no agent needed (also runs in CI)
 scripts/e2e-local.sh      # real-claude e2e (macOS, logged-in claude required)
+scripts/e2e-codex.sh      # real-codex e2e (macOS, logged-in codex required)
 scripts/build-release.sh  # release archives for this host OS into ./dist
 ```
 
