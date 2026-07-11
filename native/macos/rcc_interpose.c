@@ -1,4 +1,4 @@
-// rcc_interpose.c — macOS DYLD interpose layer for remote-cc-adapter.
+// rcc_interpose.c — macOS DYLD interpose layer for remote-adapter.
 //
 // This is the brain-side interception載体 for macOS (design doc §4.1 / §4.2). It
 // is loaded into a re-signed copy of the claude binary via

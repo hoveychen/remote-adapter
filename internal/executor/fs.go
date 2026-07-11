@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/hoveychen/remote-cc-adapter/internal/protocol"
+	"github.com/hoveychen/remote-adapter/internal/protocol"
 )
 
 // FSService serves filesystem IO-RPC requests against the executor host's real

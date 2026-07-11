@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hoveychen/remote-cc-adapter/internal/execproto"
-	"github.com/hoveychen/remote-cc-adapter/internal/transport"
+	"github.com/hoveychen/remote-adapter/internal/execproto"
+	"github.com/hoveychen/remote-adapter/internal/transport"
 )
 
 // TestExecIncrementalOutput models a run_in_background task: a long-running

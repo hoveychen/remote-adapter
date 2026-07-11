@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/hoveychen/remote-cc-adapter/internal/paircode"
+	"github.com/hoveychen/remote-adapter/internal/paircode"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"

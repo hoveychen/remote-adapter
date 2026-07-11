@@ -12,8 +12,8 @@ package executor
 import (
 	"io"
 
-	"github.com/hoveychen/remote-cc-adapter/internal/protocol"
-	"github.com/hoveychen/remote-cc-adapter/internal/transport"
+	"github.com/hoveychen/remote-adapter/internal/protocol"
+	"github.com/hoveychen/remote-adapter/internal/transport"
 )
 
 // Stream-kind prefix bytes written by the caller right after connecting.

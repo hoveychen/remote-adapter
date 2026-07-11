@@ -5,7 +5,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/hoveychen/remote-cc-adapter/internal/transport"
+	"github.com/hoveychen/remote-adapter/internal/transport"
 )
 
 // ExecBridge lets the subprocess proxy reach the executor over whatever

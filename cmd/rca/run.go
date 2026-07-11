@@ -21,10 +21,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/hoveychen/remote-cc-adapter/internal/adapter"
-	"github.com/hoveychen/remote-cc-adapter/internal/paircode"
-	"github.com/hoveychen/remote-cc-adapter/internal/routing"
-	"github.com/hoveychen/remote-cc-adapter/internal/transport"
+	"github.com/hoveychen/remote-adapter/internal/adapter"
+	"github.com/hoveychen/remote-adapter/internal/paircode"
+	"github.com/hoveychen/remote-adapter/internal/routing"
+	"github.com/hoveychen/remote-adapter/internal/transport"
 )
 
 // runOpts is the parsed run-mode command line.

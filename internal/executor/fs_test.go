@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/hoveychen/remote-cc-adapter/internal/protocol"
+	"github.com/hoveychen/remote-adapter/internal/protocol"
 )
 
 func TestFSServiceReadSlice(t *testing.T) {

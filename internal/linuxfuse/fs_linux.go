@@ -24,8 +24,8 @@ import (
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 
-	"github.com/hoveychen/remote-cc-adapter/internal/protocol"
-	"github.com/hoveychen/remote-cc-adapter/internal/transport"
+	"github.com/hoveychen/remote-adapter/internal/protocol"
+	"github.com/hoveychen/remote-adapter/internal/transport"
 )
 
 // Client issues fs IO-RPC calls to the adapter over a serialized connection,

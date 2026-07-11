@@ -7,10 +7,10 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/hoveychen/remote-cc-adapter/internal/executor"
-	"github.com/hoveychen/remote-cc-adapter/internal/protocol"
-	"github.com/hoveychen/remote-cc-adapter/internal/routing"
-	"github.com/hoveychen/remote-cc-adapter/internal/transport"
+	"github.com/hoveychen/remote-adapter/internal/executor"
+	"github.com/hoveychen/remote-adapter/internal/protocol"
+	"github.com/hoveychen/remote-adapter/internal/routing"
+	"github.com/hoveychen/remote-adapter/internal/transport"
 )
 
 // TestAdapterOverLibp2p wires the adapter and executor over a real libp2p
