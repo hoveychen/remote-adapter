@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hoveychen/remote-cc-adapter/internal/executor"
-	"github.com/hoveychen/remote-cc-adapter/internal/protocol"
-	"github.com/hoveychen/remote-cc-adapter/internal/routing"
-	"github.com/hoveychen/remote-cc-adapter/internal/transport"
+	"github.com/hoveychen/remote-adapter/internal/executor"
+	"github.com/hoveychen/remote-adapter/internal/protocol"
+	"github.com/hoveychen/remote-adapter/internal/routing"
+	"github.com/hoveychen/remote-adapter/internal/transport"
 )
 
 type testLogger struct{ t *testing.T }

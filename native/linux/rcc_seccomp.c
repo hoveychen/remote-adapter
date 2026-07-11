@@ -1,4 +1,4 @@
-// rcc_seccomp.c — Linux seccomp + ptrace supervisor for remote-cc-adapter.
+// rcc_seccomp.c — Linux seccomp + ptrace supervisor for remote-adapter.
 //
 // This is the brain-side interception carrier for Linux (design doc §4.1.3 /
 // §4.2). It exists for exactly one job: SUBPROCESS ROUTING.

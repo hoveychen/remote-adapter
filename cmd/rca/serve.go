@@ -13,8 +13,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/hoveychen/remote-cc-adapter/internal/executor"
-	"github.com/hoveychen/remote-cc-adapter/internal/transport"
+	"github.com/hoveychen/remote-adapter/internal/executor"
+	"github.com/hoveychen/remote-adapter/internal/transport"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 

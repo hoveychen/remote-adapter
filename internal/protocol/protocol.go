@@ -1,5 +1,5 @@
 // Package protocol defines the binary IO-RPC wire format spoken across three
-// hops of remote-cc-adapter:
+// hops of remote-adapter:
 //
 //	native interceptor (C)  <-->  adapter (Go)  <-->  executor sidecar (Go)
 //

@@ -29,8 +29,8 @@ import (
 
 	"github.com/hanwen/go-fuse/v2/fuse"
 
-	"github.com/hoveychen/remote-cc-adapter/internal/linuxfuse"
-	"github.com/hoveychen/remote-cc-adapter/internal/transport"
+	"github.com/hoveychen/remote-adapter/internal/linuxfuse"
+	"github.com/hoveychen/remote-adapter/internal/transport"
 )
 
 // From linux/capability.h and linux/prctl.h; the syscall package exports neither.

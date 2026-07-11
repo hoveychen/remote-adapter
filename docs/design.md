@@ -1,6 +1,6 @@
-# remote-cc-adapter 方案纪要
+# remote-adapter 方案纪要
 
-> 目标：让通过 `remote-cc-adapter` 启动的 `claude` 进程，其**工具调用的实际执行环境**（文件系统 I/O、子进程执行）落在另一台机器的 sandbox sidecar 里，而 Claude 本体（推理循环、工具 schema、transcript）与官方原生行为保持 100% 一致，模型不可感知这层分离。
+> 目标：让通过 `remote-adapter` 启动的 `claude` 进程，其**工具调用的实际执行环境**（文件系统 I/O、子进程执行）落在另一台机器的 sandbox sidecar 里，而 Claude 本体（推理循环、工具 schema、transcript）与官方原生行为保持 100% 一致，模型不可感知这层分离。
 >
 > 状态（2026-07-08 POC 更新）：**v3 原始机制（`node --require io-shim.js cli.js`）已被 POC 证伪**——当前 claude 发行版是 Bun 编译的独立二进制，没有可注入的 Node `cli.js`。经老板拍板，POC 转向 **v3b：OS 系统调用层拦截**，并已在 **macOS（DYLD interpose）与 Linux（seccomp-user-notify）双平台实测跑通**：四个风险点全验 + 真实 Claude Code 端到端闭环（Read 读远端-only 文件、Bash 远端执行）。详见 §4（实测结论）与 §4.2（v3b 架构）。本文档是设计+POC 的落地记录，不是最终实现文档。
 
@@ -22,7 +22,7 @@
   - `mcp_message` 控制帧路由——目标是自己的 server 就进程内答复，否则透传（`relay.go:279-288`）；
   - `can_use_tool` 拦截（现用于 `--deny-writes` 黑名单）；
   - 环境注入（`CLAUDE_CODE_ENTRYPOINT=claude-vscode` 等计费属性伪装）与 flag 透传（`host.go:166-198`）。
-- 也就是说：cc-adapter 已经具备"作为 claude 的进程外壳、接管其 stream-json 控制通道"的成熟形态，这正是 remote-cc-adapter 需要的宿主壳。
+- 也就是说：cc-adapter 已经具备"作为 claude 的进程外壳、接管其 stream-json 控制通道"的成熟形态，这正是 remote-adapter 需要的宿主壳。
 - 成熟度：生产部署，官方 SDK（Python/TS）验证通过，flag 版本每日 CI 跟踪。
 
 ## 2. 方案演进：为什么最终选择"运行时 I/O 拦截"
@@ -42,7 +42,7 @@
 4. 老板进一步明确的要求（"Read/Write 应该直接 proxy 到远端，读大文件的一部分不应该真的落地本地磁盘"）用挂载方案很别扭——NFS 视图仍然是"看起来像本地文件"的抽象，不是显式的按需分段读取。
 
 ### 方案 C（采纳）：运行时拦截 `fs` / `child_process`
-**关键事实**：claude CLI 的 npm 发行版是一个由 Node 运行的 `cli.js`（详见 §4.1），而 remote-cc-adapter 本来就控制 spawn 命令行。于是可以在 `cli.js` 加载**之前**，用 Node 的 `--require` 注入一个 shim，把 Node 内置的 `fs` / `fs/promises` / `child_process` 模块整体替换为远端转发版本。
+**关键事实**：claude CLI 的 npm 发行版是一个由 Node 运行的 `cli.js`（详见 §4.1），而 remote-adapter 本来就控制 spawn 命令行。于是可以在 `cli.js` 加载**之前**，用 Node 的 `--require` 注入一个 shim，把 Node 内置的 `fs` / `fs/promises` / `child_process` 模块整体替换为远端转发版本。
 
 这一步的意义：**工具实现完全不动**（Read/Write/Edit/Glob/Bash/Grep 全是原生代码在跑），只是它们脚下调用的 `fs.read(fd, offset)` / `child_process.spawn(...)` 被路由到远端 executor 执行。因此：
 - 工具名、schema、transcript 100% 原生，模型不可感知任何差异（比方案 B 更彻底——不仅 Bash，所有工具全部原生）。
@@ -58,7 +58,7 @@
 
 ```
 ┌─────────────────────────────┐        libp2p (Noise/TLS, PeerID=公钥)        ┌──────────────────────────┐
-│   remote-cc-adapter (Go)     │◀───────────── P2P 直连/打洞/relay 兜底 ─────────▶│   executor sidecar (Go)   │
+│   remote-adapter (Go)     │◀───────────── P2P 直连/打洞/relay 兜底 ─────────▶│   executor sidecar (Go)   │
 │                              │                                                │   (远端 sandbox 内)       │
 │ - spawn: node --require      │                                                │                          │
 │   io-shim.js cli.js ...      │        unix socket (本机 IPC)                  │ - fs 操作服务             │
@@ -77,7 +77,7 @@
 └─────────────────────────────┘
 ```
 
-1. **remote-cc-adapter**（Go，参考 cc-adapter 的 stream-json shim 形态）
+1. **remote-adapter**（Go，参考 cc-adapter 的 stream-json shim 形态）
    - 作为 claude 的进程外壳，spawn `node --require io-shim.js cli.js ...`（而不是直接 spawn 原生二进制——用 npm 发行版是因为它的 fs/child_process 调用经过标准 Node 模块，可 patch；原生二进制版做不到这一层拦截）。
    - 在本机监听一个 unix socket，作为 io-shim.js 的 IO RPC 服务端。
    - 持有 libp2p endpoint，与远端 executor sidecar 建立 P2P 连接（穿墙细节见 §3.3）。

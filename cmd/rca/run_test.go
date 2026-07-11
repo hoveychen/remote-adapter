@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/hoveychen/remote-cc-adapter/internal/routing"
+	"github.com/hoveychen/remote-adapter/internal/routing"
 )
 
 func TestParseRunArgs(t *testing.T) {

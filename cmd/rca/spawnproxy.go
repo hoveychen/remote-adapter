@@ -26,9 +26,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/hoveychen/remote-cc-adapter/internal/execproto"
-	"github.com/hoveychen/remote-cc-adapter/internal/executor"
-	"github.com/hoveychen/remote-cc-adapter/internal/transport"
+	"github.com/hoveychen/remote-adapter/internal/execproto"
+	"github.com/hoveychen/remote-adapter/internal/executor"
+	"github.com/hoveychen/remote-adapter/internal/transport"
 )
 
 func cmdSpawnProxy(args []string) int {

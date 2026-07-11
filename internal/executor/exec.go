@@ -10,7 +10,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/hoveychen/remote-cc-adapter/internal/execproto"
+	"github.com/hoveychen/remote-adapter/internal/execproto"
 )
 
 // serveExec runs one subprocess on the executor host on behalf of a connected

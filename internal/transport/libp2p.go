@@ -16,7 +16,7 @@ import (
 	"github.com/multiformats/go-multiaddr"
 )
 
-// RCCProtocol is the libp2p protocol ID for remote-cc-adapter streams. fs IO-RPC
+// RCCProtocol is the libp2p protocol ID for remote-adapter streams. fs IO-RPC
 // and subprocess streams share it as separate streams on one connection (design
 // doc §3.3); the executor's stream-kind prefix byte still distinguishes them.
 const RCCProtocol protocol.ID = "/rcc/1.0.0"

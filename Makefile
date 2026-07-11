@@ -1,4 +1,4 @@
-# remote-cc-adapter — top-level build.
+# remote-adapter — top-level build.
 #
 # One Go binary: rca. The native interceptor is platform-specific (macOS
 # interpose dylib / Linux seccomp supervisor); `make native` builds it and

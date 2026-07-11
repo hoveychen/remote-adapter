@@ -1,4 +1,4 @@
-module github.com/hoveychen/remote-cc-adapter
+module github.com/hoveychen/remote-adapter
 
 go 1.25.7
 
