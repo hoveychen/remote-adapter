@@ -75,14 +75,17 @@ var engineProfiles = map[string]engineProfile{
 		defaultDir: ".codex",
 		absExtras:  []string{"/etc/codex"},
 		// osHintFlag intentionally empty: codex has no --append-system-prompt (or
-		// --system-prompt) flag as of 2026-07 (verified against the published CLI
-		// reference; the feature is an open upstream request, openai/codex#11117).
-		// Its only persistent instruction surface is AGENTS.md, but injecting that
-		// means writing into the user's project dir (which routes remote and could
-		// clobber an existing file) or their global ~/.codex — both intrusive and
-		// unverified here. So on a cross-OS codex launch run mode logs an
-		// actionable warning instead of silently doing the wrong thing; wire a
-		// verified mechanism in when codex ships an append flag.
+		// --system-prompt) flag. Verified 2026-07 against the real codex-cli
+		// 0.144.4 binary — `codex --help` and `codex exec --help` expose only a
+		// positional [PROMPT] and -c/--config key=value; no prompt/instruction
+		// injection flag exists (matches the published CLI reference; the append
+		// flag is an open upstream request, openai/codex#11117). Its only
+		// persistent instruction surface is AGENTS.md, but injecting that means
+		// writing into the user's project dir (which routes remote and could
+		// clobber an existing file) or their global ~/.codex — both intrusive. So
+		// on a cross-OS codex launch run mode logs an actionable warning instead of
+		// silently doing the wrong thing; wire a real mechanism in when codex ships
+		// an append flag.
 		// codex 0.144.4+ "code mode" runs shell commands through a persistent
 		// sibling helper, codex-code-mode-host, which it execs from its own
 		// bin dir; that helper then spawns the actual shell (/bin/sh -lc ...).
