@@ -97,6 +97,16 @@ Useful flags (they may appear anywhere on the line; everything after a literal
 | `--peer <multiaddr>` | dial a raw libp2p multiaddr instead of a pairing code |
 | `--print-cmd` | print the assembled launch command + env, spawn nothing |
 
+Two environment variables extend the spawn-routing table for embedders (set
+them on the `rca <command>` process; the target inherits them):
+`RCC_LOCAL_BINS` — ':'-joined substrings matched against a spawned binary's
+path — forces matching spawns to run locally, and `RCC_LOCAL_ARGV_MARKS`
+(same format, matched against every argv token) does the same by argv
+content. The latter is for agent-harness hooks that arrive as
+`sh -c '… /path/to/harness-binary …'` — the same `/bin/sh` a routed user
+command uses, so only the argv can tell them apart. Claw Fleet, for example,
+keeps its decision-card MCP server and hook scripts local this way.
+
 Defaults are chosen so the common case needs zero flags: the project you `cd`
 into routes remote; the engine's own config and credentials always stay local,
 even under `--default-remote`. Which paths those are is an **engine profile**,

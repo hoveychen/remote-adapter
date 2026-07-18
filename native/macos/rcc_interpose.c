@@ -512,6 +512,28 @@ static int spawn_is_local_bin(const char *path) {
   return 0;
 }
 
+// RCC_LOCAL_ARGV_MARKS (':'-joined substrings): force a spawn LOCAL when any
+// argv token contains any mark, even under a remote-routed cwd. The binary
+// path alone cannot distinguish these spawns — an agent-harness hook arrives
+// as `sh -c '… "/Applications/Claw Fleet.app/…/fleet" …'`, the very same
+// /bin/sh a routed user command uses — so these match on argv content instead.
+// The launcher picks marks specific enough not to hit real user commands
+// (full app-bundle paths, harness-owned file names).
+static int spawn_has_local_argv_mark(char *const av[]) {
+  const char *marks = getenv("RCC_LOCAL_ARGV_MARKS");
+  if (!marks || !*marks) return 0;
+  char *dup = strdup(marks);
+  if (!dup) return 0;
+  int hit = 0;
+  for (char *t = strtok(dup, ":"); t && !hit; t = strtok(NULL, ":")) {
+    if (!*t) continue;
+    for (int j = 0; av && av[j] && !hit; j++)
+      if (strstr(av[j], t)) hit = 1;
+  }
+  free(dup);
+  return hit;
+}
+
 static int cwd_is_remote(void) {
   char cwd[4096];
   if (getcwd(cwd, sizeof cwd)) return is_remote(cwd);
@@ -525,7 +547,8 @@ static int cwd_is_remote(void) {
 //      by a ripgrep flag like --no-config) with a remote cwd -> REMOTE, over the
 //      allowlist, so the recursive walk runs on the executor's real filesystem in
 //      one pass rather than as a per-syscall fs-interpose metadata storm.
-//   2. local-binary allowlist -> LOCAL (credentials/self-spawn must stay local)
+//   2. local-binary allowlist OR RCC_LOCAL_ARGV_MARKS argv hit -> LOCAL
+//      (credentials/self-spawn, and harness hooks that only exist locally)
 //   3. RCC_SPAWN_SENTINEL present in argv -> REMOTE (explicit opt-in / tests)
 //   4. target binary under a remote prefix -> REMOTE
 //   5. working directory under a remote prefix -> REMOTE (natural: a subprocess
@@ -550,9 +573,11 @@ static int spawn_route(const char *path, char *const av[], const char **reason_o
 
   int route = 0;
   const char *reason = "default-local";
-  if (spawn_is_local_bin(path) && !(rgmode && cwd_is_remote())) {
+  int local_bin = spawn_is_local_bin(path);
+  int local_mark = !local_bin && spawn_has_local_argv_mark(av);
+  if ((local_bin || local_mark) && !(rgmode && cwd_is_remote())) {
     route = 0;
-    reason = "local-allowlist";
+    reason = local_mark ? "local-argv-mark" : "local-allowlist";
   } else {
     int sent = 0;
     for (int j = 0; j < n; j++)

@@ -30,7 +30,8 @@
 // Invocation (by the adapter, see internal/adapter/launch.go):
 //   rcc_seccomp <target-binary> [args...]
 // Environment: RCC_REMOTE_PREFIXES, RCC_SPAWN_PROXY, RCC_EXECUTOR_SOCK,
-//   RCC_SPAWN_SENTINEL, RCC_TARGET_PATH, RCC_LOCAL_BINS. The spawn proxy inherits
+//   RCC_SPAWN_SENTINEL, RCC_TARGET_PATH, RCC_LOCAL_BINS,
+//   RCC_LOCAL_ARGV_MARKS. The spawn proxy inherits
 //   the tracee's env (which already carries RCC_EXECUTOR_SOCK), so no envp
 //   rewrite is needed.
 
@@ -179,6 +180,26 @@ static int spawn_is_local_bin(const char *path) {
   return 0;
 }
 
+// spawn_has_local_argv_mark mirrors rcc_interpose.c: RCC_LOCAL_ARGV_MARKS
+// (':'-joined substrings) forces a spawn LOCAL when any argv token contains
+// any mark, even under a remote cwd. Distinguishes agent-harness hooks
+// (`sh -c '… harness-binary …'`) from routed user commands, which the binary
+// path alone (/bin/sh for both) cannot.
+static int spawn_has_local_argv_mark(char **av, int n) {
+  const char *marks = getenv("RCC_LOCAL_ARGV_MARKS");
+  if (!marks || !*marks) return 0;
+  char *dup = strdup(marks);
+  if (!dup) return 0;
+  int hit = 0;
+  for (char *t = strtok(dup, ":"); t && !hit; t = strtok(NULL, ":")) {
+    if (!*t) continue;
+    for (int j = 0; j < n && !hit; j++)
+      if (av[j] && strstr(av[j], t)) hit = 1;
+  }
+  free(dup);
+  return hit;
+}
+
 // cwd_is_remote reads the TRACEE's cwd (/proc/<pid>/cwd), not the supervisor's,
 // and reports whether it is under a remote prefix.
 static int cwd_is_remote(pid_t pid) {
@@ -194,7 +215,8 @@ static int cwd_is_remote(pid_t pid) {
 // tracee `pid` should run on the remote executor. Precedence mirrors
 // rcc_interpose.c my_posix_spawn (highest first):
 //   1. rg-mode self-invocation (--no-config) with a remote cwd -> REMOTE
-//   2. local-binary allowlist -> LOCAL (proxy/self-spawn/clipboard/tmux)
+//   2. local-binary allowlist OR RCC_LOCAL_ARGV_MARKS argv hit -> LOCAL
+//      (proxy/self-spawn/clipboard/tmux, and harness hooks that only exist locally)
 //   3. RCC_SPAWN_SENTINEL present in argv -> REMOTE
 //   4. target binary under a remote prefix -> REMOTE
 //   5. working directory under a remote prefix -> REMOTE
@@ -208,7 +230,12 @@ static int route_spawn(pid_t pid, const char *path, char **av, int n, const char
 
   int cwdrem = cwd_is_remote(pid);
 
-  if (spawn_is_local_bin(path) && !(rgmode && cwdrem)) { *reason = "local-allowlist"; return 0; }
+  int local_bin = spawn_is_local_bin(path);
+  int local_mark = !local_bin && spawn_has_local_argv_mark(av, n);
+  if ((local_bin || local_mark) && !(rgmode && cwdrem)) {
+    *reason = local_mark ? "local-argv-mark" : "local-allowlist";
+    return 0;
+  }
 
   int sent = 0;
   if (sentinel && *sentinel)
