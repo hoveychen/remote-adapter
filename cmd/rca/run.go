@@ -222,10 +222,13 @@ func (v viaCloser) Close() error {
 	if v.in != nil {
 		_ = v.in.Close()
 	}
-	if v.cmd != nil && v.cmd.Process != nil {
-		_ = v.cmd.Process.Kill()
-		return v.cmd.Wait()
+	if v.cmd == nil || v.cmd.Process == nil {
+		return nil
 	}
+	_ = v.cmd.Process.Kill()
+	// Reap the child. The wait error is the kill signal we just sent (expected)
+	// or an already-exited child — neither is a Close failure, so swallow it.
+	_ = v.cmd.Wait()
 	return nil
 }
 

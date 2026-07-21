@@ -90,3 +90,84 @@ func TestStdioTransportMultiStream(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+// TestStdioTransportLargePayload round-trips a payload larger than yamux's
+// window so the framing/flow-control path is exercised, not just a single frame.
+func TestStdioTransportLargePayload(t *testing.T) {
+	c1, c2 := net.Pipe()
+	ln, err := NewStdioListener(c1, c1, c1)
+	if err != nil {
+		t.Fatalf("NewStdioListener: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		s, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer s.Close()
+		_, _ = io.Copy(s, s)
+	}()
+
+	d, err := NewStdioDialer(c2, c2, c2)
+	if err != nil {
+		t.Fatalf("NewStdioDialer: %v", err)
+	}
+	defer d.Close()
+
+	s, err := d.Dial(context.Background())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	want := make([]byte, 1<<20) // 1 MiB
+	for i := range want {
+		want[i] = byte(i * 31)
+	}
+	done := make(chan error, 1)
+	go func() {
+		if _, err := s.Write(want); err != nil {
+			done <- fmt.Errorf("write: %w", err)
+			return
+		}
+		if cw, ok := s.(interface{ CloseWrite() error }); ok {
+			_ = cw.CloseWrite()
+		}
+		done <- nil
+	}()
+	got, err := io.ReadAll(s)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if werr := <-done; werr != nil {
+		t.Fatal(werr)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("length mismatch: got %d want %d", len(got), len(want))
+	}
+	if string(got) != string(want) {
+		t.Fatal("payload corrupted in round-trip")
+	}
+}
+
+// TestStdioDialerErrorsAfterPipeClosed proves a dead underlying pipe surfaces as
+// a Dial error rather than hanging — the failure mode Fleet must see when its
+// ssh child dies.
+func TestStdioDialerErrorsAfterPipeClosed(t *testing.T) {
+	c1, c2 := net.Pipe()
+	ln, err := NewStdioListener(c1, c1, c1)
+	if err != nil {
+		t.Fatalf("NewStdioListener: %v", err)
+	}
+	d, err := NewStdioDialer(c2, c2, c2)
+	if err != nil {
+		t.Fatalf("NewStdioDialer: %v", err)
+	}
+	// Tear down the server end (as if the ssh child exited).
+	_ = ln.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := d.Dial(ctx); err == nil {
+		t.Fatal("expected Dial to error after the pipe was closed, got nil")
+	}
+}
